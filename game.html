@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Leaf Catcher — one prompt, one game</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fdf6e3; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { position: relative; width: min(100vw, 56.25vh); height: min(100vh, 177.78vw); }
+  canvas { width: 100%; height: 100%; display: block; background: linear-gradient(#bfe8ff 0%, #e8f7ff 55%, #fdf6e3 100%); touch-action: none; }
+  #hint { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 12px; color: #7a6a53; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="540" height="960"></canvas>
+  <div id="hint">← → / drag to move &nbsp;•&nbsp; catch leaves, dodge rocks</div>
+</div>
+<script>
+"use strict";
+// Leaf Catcher — built from one prompt:
+// "Build a tiny browser game in one HTML file: a basket at the bottom moves
+//  left and right with arrow keys, mouse, or touch. Green leaves fall from
+//  the top — catch one for +1 point. Grey rocks also fall — hitting one costs
+//  a life. Missing a leaf costs a life. 3 lives, speed ramps up as the score
+//  grows. Show score and lives, a start screen, and a game-over screen with
+//  restart. Make it bright, clean, and fun."
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = 540, H = 960;
+
+const state = {
+  mode: 'start', // 'start' | 'play' | 'over'
+  score: 0, best: +(localStorage.getItem('leafcatcher-best') || 0),
+  lives: 3, time: 0, spawnT: 0, shake: 0,
+  basketX: W / 2, basketTX: W / 2, basketV: 0,
+  items: [], pops: [], keys: {}
+};
+
+function leaf(x) {
+  return { kind: 'leaf', x, y: -30, vy: 1.8 + Math.random() * 1.2 + state.score * 0.025,
+           sway: Math.random() * Math.PI * 2, swaySpd: 0.03 + Math.random() * 0.03,
+           rot: Math.random() * Math.PI * 2, rotSpd: (Math.random() - 0.5) * 0.05, r: 20 };
+}
+function rock(x) {
+  return { kind: 'rock', x, y: -30, vy: 2.2 + Math.random() * 1.4 + state.score * 0.025,
+           sway: 0, swaySpd: 0, rot: Math.random() * Math.PI * 2,
+           rotSpd: (Math.random() - 0.5) * 0.08, r: 22 };
+}
+function spawn() {
+  const x = 40 + Math.random() * (W - 80);
+  // rocks get more common as the score grows, capped at 30%
+  state.items.push(Math.random() < Math.min(0.10 + state.score * 0.006, 0.30) ? rock(x) : leaf(x));
+}
+function reset() {
+  state.score = 0; state.lives = 3; state.items = []; state.pops = [];
+  state.basketX = W / 2; state.basketTX = W / 2; state.spawnT = 0; state.mode = 'play';
+}
+function loseLife(msg) {
+  state.lives -= 1; state.shake = 14;
+  state.pops.push({ x: state.basketX, y: H - 150, txt: msg, t: 0, col: '#e5484d' });
+  if (state.lives <= 0) {
+    state.mode = 'over';
+    if (state.score > state.best) {
+      state.best = state.score;
+      localStorage.setItem('leafcatcher-best', String(state.best));
+    }
+  }
+}
+function update(dt) {
+  state.time += dt;
+  // basket follows target with a little lag, keys nudge the target
+  const speed = 11;
+  if (state.keys['ArrowLeft'] || state.keys['a']) state.basketTX -= speed;
+  if (state.keys['ArrowRight'] || state.keys['d']) state.basketTX += speed;
+  state.basketTX = Math.max(55, Math.min(W - 55, state.basketTX));
+  state.basketX += (state.basketTX - state.basketX) * 0.35;
+  state.basketV = state.basketTX - state.basketX;
+
+  state.spawnT -= dt;
+  if (state.spawnT <= 0) { spawn(); state.spawnT = Math.max(380, 700 - state.score * 7); }
+
+  const basketY = H - 110;
+  for (let i = state.items.length - 1; i >= 0; i--) {
+    const it = state.items[i];
+    it.y += it.vy * dt / 16.7;
+    it.sway += it.swaySpd * dt / 16.7;
+    it.rot += it.rotSpd * dt / 16.7;
+    it.x += Math.sin(it.sway) * 0.6;
+    const dx = it.x - state.basketX, dy = it.y - basketY;
+    if (Math.abs(dx) < 62 && Math.abs(dy) < 46) {
+      if (it.kind === 'leaf') {
+        state.score += 1;
+        state.pops.push({ x: it.x, y: it.y, txt: '+1', t: 0, col: '#2f9e44' });
+      } else {
+        loseLife('OUCH!');
+      }
+      state.items.splice(i, 1);
+      continue;
+    }
+    if (it.y > H + 40) {
+      if (it.kind === 'leaf') loseLife('MISS');
+      state.items.splice(i, 1);
+    }
+  }
+  for (let i = state.pops.length - 1; i >= 0; i--) {
+    state.pops[i].t += dt;
+    if (state.pops[i].t > 800) state.pops.splice(i, 1);
+  }
+  if (state.shake > 0) state.shake *= 0.88;
+}
+
+function drawLeaf(x, y, r, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = '#2f9e44';
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#1e6b2e'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-r, 0); ctx.lineTo(r, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(r + 8, -6); ctx.stroke();
+  ctx.restore();
+}
+function drawRock(x, y, r, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = '#868e96'; ctx.strokeStyle = '#495057'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-r, -4); ctx.lineTo(-r * 0.4, -r); ctx.lineTo(r * 0.6, -r * 0.8);
+  ctx.lineTo(r, 0); ctx.lineTo(r * 0.5, r * 0.9); ctx.lineTo(-r * 0.5, r * 0.8);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function draw() {
+  ctx.save();
+  if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+  ctx.clearRect(-20, -20, W + 40, H + 40);
+
+  // sun + clouds
+  ctx.fillStyle = '#ffd43b';
+  ctx.beginPath(); ctx.arc(72, 84, 34, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  [[150, 150], [380, 110], [300, 230]].forEach(([x, y]) => {
+    ctx.beginPath(); ctx.ellipse(x, y, 46, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 30, y + 8, 34, 14, 0, 0, Math.PI * 2); ctx.fill();
+  });
+  // ground
+  ctx.fillStyle = '#8ce99a';
+  ctx.fillRect(0, H - 60, W, 60);
+  ctx.fillStyle = '#69db7c';
+  ctx.fillRect(0, H - 60, W, 8);
+
+  for (const it of state.items) {
+    if (it.kind === 'leaf') drawLeaf(it.x, it.y, it.r, it.rot);
+    else drawRock(it.x, it.y, it.r, it.rot);
+  }
+
+  // basket
+  const by = H - 110, tilt = Math.max(-0.18, Math.min(0.18, state.basketV * 0.02));
+  ctx.save(); ctx.translate(state.basketX, by); ctx.rotate(tilt);
+  ctx.fillStyle = '#e8590c';
+  roundRect(-58, -18, 116, 44, 10); ctx.fill();
+  ctx.strokeStyle = '#862e05'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.strokeStyle = '#f08c4a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-30, -16); ctx.lineTo(-30, 24); ctx.moveTo(0, -16); ctx.lineTo(0, 24); ctx.moveTo(30, -16); ctx.lineTo(30, 24); ctx.stroke();
+  ctx.restore();
+
+  for (const p of state.pops) {
+    ctx.globalAlpha = 1 - p.t / 800;
+    ctx.fillStyle = p.col; ctx.font = 'bold 34px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.txt, p.x, p.y - p.t * 0.05);
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  ctx.textAlign = 'left'; ctx.fillStyle = '#343a40';
+  ctx.font = 'bold 30px system-ui, sans-serif';
+  ctx.fillText('SCORE ' + state.score, 18, 46);
+  ctx.textAlign = 'right';
+  ctx.fillText('BEST ' + state.best, W - 18, 46);
+  ctx.textAlign = 'left';
+  ctx.font = '28px system-ui, sans-serif';
+  let hearts = '';
+  for (let i = 0; i < 3; i++) hearts += i < state.lives ? '💚' : '🤍';
+  ctx.fillText(hearts, 18, 86);
+
+  if (state.mode === 'start') {
+    ctx.fillStyle = 'rgba(253,246,227,0.88)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#2f9e44'; ctx.textAlign = 'center';
+    ctx.font = 'bold 64px system-ui, sans-serif';
+    ctx.fillText('🍃 LEAF', W / 2, 380);
+    ctx.fillText('CATCHER', W / 2, 452);
+    ctx.fillStyle = '#495057'; ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('One prompt. One game.', W / 2, 510);
+    ctx.fillText('Catch the leaves. Dodge the rocks.', W / 2, 552);
+    ctx.fillStyle = '#e8590c'; ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.fillText('▶  TAP OR PRESS SPACE', W / 2, 640);
+    ctx.fillStyle = '#868e96'; ctx.font = '22px system-ui, sans-serif';
+    ctx.fillText('← → keys, mouse or touch to move', W / 2, 690);
+  }
+  if (state.mode === 'over') {
+    ctx.fillStyle = 'rgba(40,40,40,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = 'bold 58px system-ui, sans-serif';
+    ctx.fillText('GAME OVER', W / 2, 420);
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.fillText('Score: ' + state.score, W / 2, 500);
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('Best: ' + state.best, W / 2, 546);
+    ctx.fillStyle = '#ffd43b'; ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.fillText('↻  PRESS R TO PLAY AGAIN', W / 2, 630);
+  }
+  ctx.restore();
+}
+
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(50, ts - last || 16.7);
+  last = ts;
+  if (state.mode === 'play') update(dt);
+  else state.time += dt;
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+addEventListener('keydown', (e) => {
+  state.keys[e.key] = true;
+  if (e.key === ' ' && state.mode === 'start') { reset(); e.preventDefault(); }
+  if ((e.key === 'r' || e.key === 'R') && state.mode === 'over') reset();
+  if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+});
+addEventListener('keyup', (e) => { state.keys[e.key] = false; });
+function pointToX(clientX) {
+  const r = cv.getBoundingClientRect();
+  state.basketTX = (clientX - r.left) / r.width * W;
+}
+cv.addEventListener('pointermove', (e) => { pointToX(e.clientX); });
+cv.addEventListener('pointerdown', (e) => {
+  pointToX(e.clientX);
+  if (state.mode === 'start' || state.mode === 'over') reset();
+});
+
+// Automation/testing handle: lets a driver read the live game state
+// (score, lives, falling items, basket position) without changing play.
+window.__leafcatcher = state;
+</script>
+</body>
+</html>
