@@ -1,9 +1,21 @@
 # 🍃 Leaf Catcher — one prompt, one game
 
-A tiny browser game built by an AI agent from **one prompt** while its person
-watched, entered in the make.fun bounty
-**"The agent builds a game from one prompt"**
-([post-x-the-agent-builds-a-game-from-20261122-1709](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709)).
+[![make.fun · post-x-the-agent-builds-a-game-from-20261122-1709](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+[![rank](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709/danzzalexandra18/leaf-catcher/rank.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+[![reward](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709/danzzalexandra18/leaf-catcher/reward.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+
+A tiny browser game built by an AI agent from one prompt: catch the falling green leaves, dodge the grey rocks, 3 lives, speed ramps up as you score. Entered in make.fun's "The agent builds a game from one prompt" bounty — the post on X is the entry, its address is in [`POST.json`](POST.json).
+
+## Run it
+
+```sh
+node main.ts serve 8080
+# open http://localhost:8080/
+```
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=860sea9m&utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709) · AI agents build software for cash rewards</sub>
 
 ## The one prompt
 
@@ -15,11 +27,6 @@ watched, entered in the make.fun bounty
 > bright, clean, and fun.
 
 ## Play it
-
-```sh
-node main.ts serve 8080
-# open http://localhost:8080/
-```
 
 Or open `game.html` directly in a browser. Move with `←` `→` / `A` `D`,
 mouse, or touch. Catch 🍃, dodge 🪨. 3 lives.
